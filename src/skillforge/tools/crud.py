@@ -1,5 +1,8 @@
 """
 CRUD tools — create, update, and delete skills (with auto-backup).
+
+save_skill includes a hard validation gate: skills that fail structural
+or content checks are rejected with actionable error messages.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 
 from skillforge.response import respond, error
 from skillforge.skill_manager import SkillManager
+from skillforge.validator import validate_skill
 
 
 def register(mcp: FastMCP, manager: SkillManager) -> None:
@@ -23,21 +27,24 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
         body: str,
         extra_frontmatter: Optional[str] = None,
     ) -> str:
-        """Create or update a skill. Auto-backs up before overwrite.
+        """Create or update a skill. Validates before saving, auto-backs up before overwrite.
 
-        ⚠️ Should be called by a SKILL-OPTIMIZATION SUB-AGENT, not the
-        main agent. The sub-agent workflow: get_skill_guide → draft → save_skill.
+        This tool enforces quality gates — if the skill fails validation,
+        it will be REJECTED with specific error messages explaining what
+        to fix. Fix the issues and call save_skill again.
 
-        WHY this restriction exists: skill edits affect every future conversation.
-        A dedicated sub-agent can focus on writing high-quality, generalizable
-        instructions without being distracted by the user's current task.
+        Validation checks:
+        - Description must be >= 50 chars and explain WHAT + WHEN
+        - Body must be 3-500 lines of actionable instructions
+        - Description should include trigger conditions
+        - Body should avoid overly rigid language (explain WHY instead)
 
         Args:
             name: Skill identifier (lowercase, hyphens, max 64 chars).
-            description: What the skill does and when to trigger (~250 chars).
-                         Front-load the key use case. Be specific about trigger
-                         contexts to avoid under-triggering.
-            body: Markdown body (<500 lines). Follow the skill writing guide.
+            description: What the skill does and when to trigger (>= 50 chars).
+                         Front-load the key use case. Include trigger conditions
+                         like 'Use this skill when...' or 'Activate whenever...'.
+            body: Markdown body (3-500 lines). Follow the skill writing guide.
             extra_frontmatter: Optional JSON of additional frontmatter fields.
         """
         extra = {}
@@ -46,6 +53,20 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
                 extra = json.loads(extra_frontmatter)
             except json.JSONDecodeError:
                 return error("extra_frontmatter must be valid JSON")
+
+        # --- Hard validation gate ---
+        validation = validate_skill(name, description, body)
+        if not validation.passed:
+            return respond({
+                "status": "rejected",
+                "skill": name,
+                "validation": validation.to_dict(),
+                "instruction": (
+                    "Fix the errors listed above and call save_skill again. "
+                    "Warnings are informational — the skill can be saved once "
+                    "all errors are resolved."
+                ),
+            })
 
         try:
             is_update = manager.skill_exists(name)
@@ -59,6 +80,8 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
             "skill": name,
             "path": str(path),
         }
+        if validation.warnings:
+            result["warnings"] = validation.warnings
         if backup_path:
             result["backup"] = str(backup_path)
             result["restore_hint"] = f"restore_skill(name='{name}', timestamp='{backup_path.name}')"

@@ -1,9 +1,14 @@
 """
 Optimization tools — skill improvement workflow and writing guide.
+
+The optimization flow is designed to work reliably across any MCP client:
+no sub-agent spawning is required. The tool returns structured guidance
+that the LLM can follow directly, and save_skill enforces quality gates.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -22,9 +27,8 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
     def get_skill_guide() -> str:
         """Get the Skill Writing & Optimization Guide.
 
-        The sub-agent MUST call this BEFORE creating or modifying any skill.
-        It covers: file format, writing principles, description optimization,
-        and iterative improvement techniques.
+        Call this BEFORE creating or modifying any skill. It covers: file format,
+        writing principles, description optimization, and iterative improvement.
 
         WHY: Skills that ignore the guide tend to be either too rigid
         (walls of MUST/NEVER) or too vague (no actionable instructions).
@@ -42,14 +46,18 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
         feedback: str,
         context: str = "",
     ) -> str:
-        """Prepare a skill optimization task for a sub-agent.
+        """Prepare and return a structured optimization plan for a skill.
 
         Call this when user feedback indicates a skill needs improvement or
-        a new skill should be created. Returns a structured prompt to pass
-        to a dedicated sub-agent.
+        a new skill should be created. Returns a step-by-step plan that you
+        can follow directly — no sub-agent required.
 
-        ⚠️ After calling this, SPAWN A SUB-AGENT with the returned prompt.
-        Run it in the background so the main task is not blocked.
+        Recommended workflow:
+        1. Call triage_skill_request first to check for existing skills
+        2. Call this tool to get the optimization plan
+        3. Call get_skill_guide to understand writing best practices
+        4. Draft the skill content following the plan and guide
+        5. Call save_skill — it will validate and reject if quality is insufficient
 
         Trigger signals to watch for:
         - User corrects your approach → existing skill may need updating
@@ -68,36 +76,32 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
         except ValueError as e:
             return error(str(e))
 
+        current_content = None
         if skill:
-            import json
-            current_content = (
-                f"\n\n## Current Skill Content\n```\n"
-                f"{json.dumps(skill.to_dict(), ensure_ascii=False, indent=2)}\n```"
-            )
-        else:
-            current_content = f"\n\n## Note\nSkill '{skill_name}' does not exist yet — create it."
+            current_content = skill.to_dict()
 
-        agent_prompt = (
-            f"# Skill Optimization Task\n\n"
-            f"You are a skill-optimization sub-agent for SkillForge. Your job is to\n"
-            f"improve (or create) a skill based on user feedback.\n\n"
-            f"## Feedback\n{feedback}\n\n"
-            f"## Context\n{context if context else 'No additional context.'}\n"
-            f"{current_content}\n\n"
-            f"## Steps\n"
-            f"1. Call `get_skill_guide()` — read the writing best practices.\n"
-            f"2. If updating: call `get_skill('{skill_name}')` for the latest version.\n"
-            f"3. Analyze feedback → determine changes needed.\n"
-            f"4. Apply optimization principles:\n"
-            f"   - Generalize (don't overfit to one case)\n"
-            f"   - Keep lean (remove what doesn't work)\n"
-            f"   - Explain WHY behind each instruction\n"
-            f"   - Bundle repeated patterns into reusable structure\n"
-            f"5. Call `save_skill()` with improved content. (Auto-backed up.)\n"
-            f"6. Report: what changed and why.\n\n"
-            f"The skill will be used across many future tasks — make improvements "
-            f"that generalize, not narrow fixes for a single case."
-        )
+        optimization_plan = {
+            "action": "update" if skill else "create",
+            "skill_name": skill_name,
+            "feedback": feedback,
+            "context": context or None,
+            "current_skill": current_content,
+            "steps": [
+                "1. Call get_skill_guide() to review writing best practices.",
+                f"2. {'Call get_skill(\'' + skill_name + '\') for the latest version.' if skill else 'This is a new skill — start from scratch.'}",
+                "3. Analyze the feedback and determine what changes are needed.",
+                "4. Draft the skill following these principles:",
+                "   - Generalize: don't overfit to one specific case",
+                "   - Keep lean: remove instructions that don't earn their place",
+                "   - Explain WHY: reasoning > rigid imperatives",
+                "   - Include trigger conditions in the description",
+                "   - Bundle repeated patterns into reusable structure",
+                "5. Call save_skill() with the drafted content.",
+                "   → save_skill validates automatically and rejects if quality is insufficient.",
+                "   → Fix any validation errors and retry.",
+                "6. Confirm the result to the user.",
+            ],
+        }
 
         try:
             manager.append_optimization_log(skill_name, feedback, context)
@@ -106,13 +110,7 @@ def register(mcp: FastMCP, manager: SkillManager) -> None:
 
         return respond({
             "status": "optimization_ready",
-            "skill_name": skill_name,
-            "agent_prompt": agent_prompt,
-            "instruction": (
-                "Spawn a sub-agent with the agent_prompt above. "
-                "Use subagent_type='general-purpose' and run_in_background=true. "
-                "The sub-agent has access to SkillForge MCP tools."
-            ),
+            "optimization_plan": optimization_plan,
         })
 
     @mcp.tool()

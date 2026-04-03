@@ -4,7 +4,7 @@ SkillForge — MCP server for managing and iteratively optimizing Skills.
 Architecture:
 - SkillForge maintains its own skill repository (~/.skillforge/skills/)
 - All modifications are auto-backed up (~/.skillforge/backups/)
-- Skill optimization is delegated to sub-agents
+- Quality is enforced through hard validation gates in save_skill
 - Every tool response carries a feedback-monitoring reminder
 - Tools are organized in modules under skillforge.tools.*
 """
@@ -17,7 +17,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts import base
 
 from skillforge.skill_manager import SkillManager
-from skillforge.tools import backup, crud, discovery, optimization
+from skillforge.tools import backup, crud, discovery, optimization, triage
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -53,12 +53,18 @@ mcp = FastMCP(
         "  • User states a preference ('always X', 'never Y') → skill candidate\n"
         "  • You notice a repeated pattern across the conversation → new skill\n"
         "  • User explicitly mentions skills → act immediately\n\n"
-        "When detected → call `request_skill_optimization` → spawn background sub-agent.\n\n"
+        "When detected → call `triage_skill_request` first to check for similar "
+        "existing skills, then `request_skill_optimization` to get the improvement plan.\n\n"
 
-        "██ SUB-AGENT PROTOCOL ██\n"
-        "All skill creation/modification MUST go through a dedicated sub-agent. "
-        "Never edit skills inline in the main conversation.\n"
-        "Sub-agent workflow: `get_skill_guide` → `get_skill` → draft → `save_skill`.\n"
+        "██ SKILL OPTIMIZATION WORKFLOW ██\n"
+        "When creating or improving skills, follow this workflow:\n"
+        "1. `triage_skill_request` — check if a similar skill already exists\n"
+        "2. `request_skill_optimization` — get a structured optimization plan\n"
+        "3. `get_skill_guide` — review writing best practices\n"
+        "4. Draft the skill content following the plan and guide\n"
+        "5. `save_skill` — validates automatically and rejects if quality is insufficient\n"
+        "   → Fix validation errors and retry until the skill passes\n\n"
+        "Quality is enforced by hard validation gates in save_skill — not by convention.\n"
         "All saves are auto-backed up — no data loss risk.\n\n"
 
         "██ BEHAVIORAL GUIDELINES ██\n"
@@ -87,6 +93,7 @@ discovery.register(mcp, manager)
 crud.register(mcp, manager)
 backup.register(mcp, manager)
 optimization.register(mcp, manager)
+triage.register(mcp, manager)
 
 # ---------------------------------------------------------------------------
 # MCP Prompts — session initialization
@@ -129,13 +136,17 @@ def skillforge_init() -> list[base.Message]:
         "2. Did the user express a preference? → Skill update candidate\n"
         "3. Am I seeing a repeated pattern? → New skill candidate\n"
         "4. Did the user explicitly mention skills? → Act on it\n\n"
-        "When any signal is detected, call `request_skill_optimization` and "
-        "spawn a background sub-agent. Never let a skill improvement opportunity pass.\n\n"
+        "When any signal is detected:\n"
+        "1. Call `triage_skill_request` to check for existing similar skills\n"
+        "2. Call `request_skill_optimization` to get the improvement plan\n"
+        "3. Follow the plan to draft and save the skill\n\n"
         "## Behavioral Reminders\n\n"
         "- Treat loaded skill instructions as requirements, not suggestions.\n"
         "- If a skill is relevant to the current task, follow it consistently.\n"
         "- When in doubt about whether a skill applies, load it and check.\n"
         "- Do not mention SkillForge internals to the user unless they ask.\n"
+        "- Quality is enforced by save_skill validation — if your skill is rejected, "
+        "read the errors, fix them, and retry.\n"
     )
 
     return [base.UserMessage(content=content)]
