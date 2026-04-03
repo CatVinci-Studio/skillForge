@@ -1,12 +1,38 @@
 [project]
-name = "skillforge"
+name = "skillforge-mcp"
 version = "0.1.0"
-description = "MCP server for managing and iteratively optimizing Skills"
+description = "An MCP server that makes your AI agent learn and evolve — one skill at a time."
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [
+    {name = "CatVinci Studio", email = "catvinci.studio@gmail.com"},
+]
+keywords = ["mcp", "skills", "ai", "agent", "claude", "llm", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "mcp[cli]>=1.0.0",
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CatVinci-Studio/skillForge"
+Repository = "https://github.com/CatVinci-Studio/skillForge"
+Issues = "https://github.com/CatVinci-Studio/skillForge/issues"
+
+[project.scripts]
+skillforge = "skillforge.server:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -14,9 +40,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skillforge"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/skillforge/guide" = "skillforge/guide"
-
-[project.scripts]
-skillforge = "skillforge.server:main"

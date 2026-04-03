@@ -48,38 +48,48 @@ SkillForge is a **Model Context Protocol (MCP) server** that gives your AI agent
 ### 📦 Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/CatVinci-Studio/skillForge.git
-cd skillForge
+# Install from PyPI (recommended)
+pip install skillforge-mcp
 
-# Install with uv (recommended)
-uv pip install -e .
-
-# Or with pip
-pip install -e .
+# Or with uv
+uv pip install skillforge-mcp
 ```
 
 ### ⚡ Run the Server
 
 ```bash
-# Start the MCP server
+# Run directly
 skillforge
+
+# Or run without installing via uvx
+uvx skillforge-mcp
 ```
 
 ### 🔌 Connect to Claude Code
 
-Add to your MCP config (`~/.claude/mcp_servers.json` or project-level):
+Add to your MCP config:
 
 ```json
 {
   "mcpServers": {
     "skillforge": {
-      "command": "skillforge",
-      "args": []
+      "command": "uvx",
+      "args": ["skillforge-mcp"]
     }
   }
 }
 ```
+
+<details>
+<summary>💡 Alternative: install from source</summary>
+
+```bash
+git clone https://github.com/CatVinci-Studio/skillForge.git
+cd skillForge
+pip install -e .
+```
+
+</details>
 
 ---
 
